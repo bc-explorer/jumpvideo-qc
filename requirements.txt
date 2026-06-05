@@ -1,0 +1,19 @@
+# Requires Python 3.10 (aligned with production Ubuntu + MatAnyone stack).
+# macOS: brew install python@3.10 && python3.10 -m venv .venv
+
+# Core
+numpy>=1.24,<2.1
+opencv-python-headless>=4.8
+Pillow>=10.0
+PyYAML>=6.0
+pandas>=2.0
+tqdm>=4.66
+
+# Model inference (YOLO11 detection + pose)
+# torch is pulled in by ultralytics; on Ubuntu+CUDA install the CUDA build of torch
+# separately, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+ultralytics>=8.3.0
+
+# UI
+streamlit>=1.36

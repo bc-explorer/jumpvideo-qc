@@ -1,0 +1,82 @@
+task:
+  root: ""
+  profile: "auto"          # auto | live_commerce | person
+  output_video: "auto"     # auto from outputs/manifest.json
+
+paths:
+  source_video: "auto"
+  frames_dir: "auto"
+  combined_alpha_dir: "auto"
+  human_alpha_dir: "auto"
+  final_keep_dir: "auto"
+  subtitles_dir: "auto"
+  sam2_mask_dir: "auto"
+  outputs_manifest: "auto"
+
+runtime:
+  device: "auto"           # auto | cuda | mps | cpu
+  frame_stride: 5
+  image_size: 640
+  batch_size: 16
+  yolo_seg_model: "yolo11s-seg.pt"   # instance seg = coverage denominator
+  yolo_det_model: "yolo11s.pt"       # fallback only
+  yolo_pose_model: "yolo11n-pose.pt"
+
+mode: "sensitive"          # conservative | balanced | sensitive
+
+subtitle:
+  use_upstream_subtitle_mask: true
+  ignore_lower_third: true
+  lower_third_region: [0.0, 0.72, 1.0, 1.0]   # x0,y0,x1,y1 (normalized)
+  ignore_top_banner: true
+  top_banner_region: [0.0, 0.0, 1.0, 0.12]
+
+rules:
+  alpha_threshold: 0.5
+  yolo_conf: 0.12
+
+  # person
+  person_combined_coverage_warn: 0.75
+  human_alpha_coverage_warn: 0.65
+  second_person_min_seconds: 0.7
+  # gates so low-confidence / tiny YOLO boxes are not treated as a real
+  # second person (detection conf itself stays low to catch real issues)
+  second_person_min_conf: 0.35
+  second_person_min_area_ratio: 0.02
+
+  # face / hand (compared against combined_alpha)
+  face_coverage_warn: 0.90
+  face_coverage_fail: 0.75
+  hand_coverage_warn: 0.75
+  hand_coverage_fail: 0.60
+
+  # product
+  product_near_hand_coverage_fail: 0.50
+  host_product_drop_ratio: 0.40
+  assistant_product_drop_ratio: 0.40
+  table_product_drop_ratio: 0.50
+
+  # generic mask area jump
+  mask_area_drop_ratio: 0.60
+  mask_area_grow_ratio: 1.80
+
+  # sam2
+  sam2_object_drop_ratio: 0.40
+  sam2_background_leak_ratio: 0.80
+  sam2_drift_ratio: 0.25
+
+  # matanyone
+  matanyone_alpha_drop_ratio: 0.35
+  flicker_iou_threshold: 0.50
+
+segment:
+  merge_gap_seconds: 1.0
+  pad_seconds: 1.0
+
+outputs:
+  report_dir: "qc"
+  write_json: true
+  write_html: true
+  write_csv: true
+  write_previews: true
+  max_previews: 200

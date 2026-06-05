@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Model weights (downloaded on demand by ultralytics)
+*.pt
+
+# QC outputs generated inside task dirs
+qc/
+resolved_paths.json
+
+# Local sample / test data
+sample_data/**
+!sample_data/.gitkeep
+!sample_data/README.md
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
