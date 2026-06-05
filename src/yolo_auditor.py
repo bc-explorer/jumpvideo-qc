@@ -75,6 +75,7 @@ class YoloAuditor:
         self.det_model_name = rt.get("yolo_det_model", "yolo11s.pt")
         self.pose_model_name = rt.get("yolo_pose_model", "yolo11n-pose.pt")
         self.imgsz = int(rt.get("image_size", 640))
+        self.batch_size = max(1, int(rt.get("batch_size", 1)))
         self.device = auto_device(rt.get("device", "auto"))
         self.conf = float(config.rule("yolo_conf", 0.12))
         self._seg = None
@@ -114,15 +115,8 @@ class YoloAuditor:
         cv2.fillPoly(m, [pts], 1)
         return m
 
-    # ----------------------------------------------------------------------
-    def audit_frame(self, image_bgr: np.ndarray) -> FrameAudit:
-        self.ensure_loaded()
-        audit = FrameAudit()
-        h, w = image_bgr.shape[:2]
-
-        seg_res = self._seg.predict(
-            image_bgr, imgsz=self.imgsz, conf=self.conf, device=self.device, verbose=False
-        )[0]
+    def _apply_seg_result(self, audit: FrameAudit, seg_res, hw: Tuple[int, int]) -> None:
+        h, w = hw
         names = seg_res.names
         # polygons in original-image coordinates, one per instance (or None)
         polys = None
@@ -146,9 +140,8 @@ class YoloAuditor:
                 else:
                     audit.objects.append(det)
 
-        pose_res = self._pose.predict(
-            image_bgr, imgsz=self.imgsz, conf=self.conf, device=self.device, verbose=False
-        )[0]
+    @staticmethod
+    def _apply_pose_result(audit: FrameAudit, pose_res) -> None:
         if pose_res.boxes is not None and pose_res.keypoints is not None:
             kpts = pose_res.keypoints.data.cpu().numpy()  # (n, 17, 3)
             for i, b in enumerate(pose_res.boxes):
@@ -162,6 +155,43 @@ class YoloAuditor:
                     PoseResult(box=tuple(xyxy), conf=conf, keypoints=kp_list)
                 )
 
+    # ----------------------------------------------------------------------
+    def audit_frames(self, images_bgr: List[np.ndarray]) -> List[FrameAudit]:
+        """Run YOLO segmentation and pose on a batch of BGR frames."""
+        if not images_bgr:
+            return []
+        self.ensure_loaded()
+        audits = [FrameAudit() for _ in images_bgr]
+        hws = [image.shape[:2] for image in images_bgr]
+
+        seg_results = self._seg.predict(
+            images_bgr,
+            imgsz=self.imgsz,
+            conf=self.conf,
+            device=self.device,
+            batch=self.batch_size,
+            verbose=False,
+        )
+        pose_results = self._pose.predict(
+            images_bgr,
+            imgsz=self.imgsz,
+            conf=self.conf,
+            device=self.device,
+            batch=self.batch_size,
+            verbose=False,
+        )
+
+        for audit, seg_res, hw in zip(audits, seg_results, hws):
+            self._apply_seg_result(audit, seg_res, hw)
+        for audit, pose_res in zip(audits, pose_results):
+            self._apply_pose_result(audit, pose_res)
+
+        for audit in audits:
+            audit.persons.sort(key=lambda d: _box_area(d.box), reverse=True)
+        return audits
+
+    def audit_frame(self, image_bgr: np.ndarray) -> FrameAudit:
+        audit = self.audit_frames([image_bgr])[0]
         audit.persons.sort(key=lambda d: _box_area(d.box), reverse=True)
         return audit
 

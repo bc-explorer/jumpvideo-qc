@@ -7,7 +7,7 @@ subtitle ignore region, and the failure label.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -49,6 +49,7 @@ def render_segment(
     subtitle_ignore,
     auditor: Optional[yolo_auditor.YoloAuditor],
     out_dir: Path,
+    audit_cache: Optional[Dict[int, yolo_auditor.FrameAudit]] = None,
 ) -> Optional[str]:
     frame_idx = seg.peak_frame
     frame = alpha_loader.load_frame_bgr(resolved.frames_dir, frame_idx)
@@ -75,7 +76,9 @@ def render_segment(
     # YOLO overlays
     if auditor is not None:
         try:
-            audit = auditor.audit_frame(frame)
+            audit = (audit_cache or {}).get(frame_idx)
+            if audit is None:
+                audit = auditor.audit_frame(frame)
             for det in audit.persons:
                 _box(overlay, det.box, C_PERSON, 2)
                 if det.mask is not None:
@@ -123,12 +126,24 @@ def render_all(
     auditor: Optional[yolo_auditor.YoloAuditor],
     report_dir: Path,
     max_previews: int = 200,
+    audit_cache: Optional[Dict[int, yolo_auditor.FrameAudit]] = None,
 ) -> None:
     out_dir = Path(report_dir) / "previews"
-    for seg in segments[:max_previews]:
+    preview_by_frame: Dict[int, str] = {}
+    rendered = 0
+    for seg in segments:
+        existing = preview_by_frame.get(seg.peak_frame)
+        if existing:
+            seg.preview = existing
+            continue
+        if rendered >= max_previews:
+            break
         try:
             seg.preview = render_segment(
-                seg, resolved, config, subtitle_ignore, auditor, out_dir
+                seg, resolved, config, subtitle_ignore, auditor, out_dir, audit_cache
             )
+            if seg.preview:
+                rendered += 1
+                preview_by_frame[seg.peak_frame] = seg.preview
         except Exception:
             seg.preview = None

@@ -18,6 +18,10 @@ runtime:
   frame_stride: 5
   image_size: 640
   batch_size: 16
+  yolo_frame_policy: "all"       # all | smart
+  yolo_baseline_seconds: 2.0     # smart: always run YOLO every N seconds
+  yolo_mask_change_ratio: 0.35   # smart: run YOLO near mask-area jumps
+  yolo_candidate_window: 1       # smart: include +/- N sampled frames around candidates
   yolo_seg_model: "yolo11s-seg.pt"   # instance seg = coverage denominator
   yolo_det_model: "yolo11s.pt"       # fallback only
   yolo_pose_model: "yolo11n-pose.pt"

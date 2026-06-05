@@ -8,6 +8,7 @@ normalise that so the rest of the pipeline can address frames by integer index.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -26,18 +27,7 @@ def find_frame_file(dir_path: Path, frame_index: int) -> Optional[Path]:
     dir_path = Path(dir_path)
     if not dir_path.is_dir():
         return None
-
-    stems = [
-        f"{frame_index:06d}",
-        f"{frame_index:04d}",
-        f"{frame_index}",
-    ]
-    for stem in stems:
-        for ext in _IMG_EXTS:
-            p = dir_path / f"{stem}{ext}"
-            if p.exists():
-                return p
-    return None
+    return list_frame_files(dir_path).get(frame_index)
 
 
 def parse_frame_index(name: str) -> Optional[int]:
@@ -49,18 +39,12 @@ def parse_frame_index(name: str) -> Optional[int]:
     return int(m.group(1))
 
 
-def list_frame_files(dir_path: Path) -> Dict[int, Path]:
-    """Map ``frame_index -> path`` for every image file in ``dir_path``.
-
-    Robust to mixed padding. If two files map to the same index, the
-    lexicographically last one wins (deterministic).
-    """
+@lru_cache(maxsize=256)
+def _list_frame_files_cached(dir_key: str) -> tuple[tuple[int, str], ...]:
+    dir_path = Path(dir_key)
     out: Dict[int, Path] = {}
-    if dir_path is None:
-        return out
-    dir_path = Path(dir_path)
     if not dir_path.is_dir():
-        return out
+        return tuple()
     for p in sorted(dir_path.iterdir()):
         if p.suffix.lower() not in _IMG_EXTS:
             continue
@@ -68,7 +52,28 @@ def list_frame_files(dir_path: Path) -> Dict[int, Path]:
         if idx is None:
             continue
         out[idx] = p
-    return out
+    return tuple((idx, str(path)) for idx, path in sorted(out.items()))
+
+
+def list_frame_files(dir_path: Path) -> Dict[int, Path]:
+    """Map ``frame_index -> path`` for every image file in ``dir_path``.
+
+    Robust to mixed padding. If two files map to the same index, the
+    lexicographically last one wins (deterministic).
+    """
+    if dir_path is None:
+        return {}
+    dir_path = Path(dir_path)
+    try:
+        key = str(dir_path.resolve())
+    except OSError:
+        key = str(dir_path)
+    return {idx: Path(path) for idx, path in _list_frame_files_cached(key)}
+
+
+def clear_cache() -> None:
+    """Clear cached directory indexes after a task writes new frame files."""
+    _list_frame_files_cached.cache_clear()
 
 
 def frame_indices(dir_path: Path) -> List[int]:

@@ -100,6 +100,54 @@ RISK_ZH = {"HIGH": "高", "MEDIUM": "中", "LOW": "低", "NONE": "无"}
 STATUS_ZH = {"ok": "正常", "missing": "缺失"}
 
 
+EVIDENCE_LABELS = {
+    "person_rank": "人物序号",
+    "box": "证据框",
+    "roi": "关注区域",
+    "yolo_conf": "YOLO 置信度",
+    "coverage_basis": "覆盖率依据",
+    "person_combined_coverage": "最终 alpha 覆盖率",
+    "person_human_coverage": "人像 alpha 覆盖率",
+    "assistant_mask_coverage": "助播 mask 覆盖率",
+    "face_coverage": "人脸覆盖率",
+    "hand_coverage": "手部覆盖率",
+    "combined_coverage": "最终 alpha 覆盖率",
+    "area": "当前面积",
+    "reference_median": "前后参考面积",
+    "drop_ratio": "下降比例",
+    "object": "对象",
+    "center_jump_px": "中心跳变距离",
+    "threshold_px": "阈值",
+    "prev_frame": "上一帧",
+    "blob_count": "连通块数量",
+    "iou_prev": "相邻帧 IoU",
+    "threshold": "阈值",
+    "person_count": "人物数量",
+    "raw_detections": "原始检测数量",
+    "source": "证据来源",
+}
+
+
+def _evidence_items(evidence: Dict) -> str:
+    if not evidence:
+        return "<span class='muted'>无额外证据</span>"
+    items = []
+    for key, value in evidence.items():
+        label = EVIDENCE_LABELS.get(key, key)
+        if isinstance(value, float):
+            text = f"{value:.3f}"
+        elif isinstance(value, (list, tuple)):
+            text = ", ".join(str(v) for v in value)
+        else:
+            text = str(value)
+        items.append(f"<span class='evitem'><b>{html.escape(label)}</b>{html.escape(text)}</span>")
+    return "".join(items)
+
+
+def _segment_anchor(seg_id: int) -> str:
+    return f"seg-{seg_id:03d}"
+
+
 def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
     path = Path(path)
     report_dir = path.parent
@@ -165,6 +213,49 @@ def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
         segments,
         key=lambda s: (-SEVERITY_RANK.get(s.severity, 0), s.start_frame),
     )
+    fps = float(vmeta.get("fps") or 0.0)
+    frame_count = int(vmeta.get("frame_count") or perf.get("total_frames") or 0)
+    timeline_max = max(frame_count - 1, 1)
+
+    focus_rows = []
+    for s in ordered[:12]:
+        d = s.to_dict()
+        sev_zh, _ = descriptions.severity_zh(d["severity"])
+        name_zh, desc_zh, _ = descriptions.alarm_zh(d["type"])
+        focus_rows.append(
+            f"<tr class='row-{esc(d['severity'])}'>"
+            f"<td><span class='dot dot-{esc(d['severity'])}'></span>{esc(sev_zh)}</td>"
+            f"<td><a href='#{_segment_anchor(d['id'])}'>{esc(d['start_tc'])} - {esc(d['end_tc'])}</a></td>"
+            f"<td>{esc(d['start_frame'])} - {esc(d['end_frame'])}<span class='muted'> / 峰值 {esc(d['peak_frame'])}</span></td>"
+            f"<td><b>{esc(name_zh)}</b><br/><span class='muted'>{esc(desc_zh)}</span></td>"
+            f"</tr>"
+        )
+    focus_table = (
+        "<table class='review-table'><tr><th>等级</th><th>时间点</th><th>帧号</th><th>质量问题</th></tr>"
+        + "".join(focus_rows)
+        + "</table>"
+        if focus_rows
+        else "<p class='empty'>暂无需要人工复核的片段。</p>"
+    )
+
+    timeline_items = []
+    for s in ordered:
+        d = s.to_dict()
+        left = max(0.0, min(99.2, (s.peak_frame / timeline_max) * 100.0))
+        name_zh, _, _ = descriptions.alarm_zh(d["type"])
+        timeline_items.append(
+            f"<a class='tick tick-{esc(d['severity'])}' href='#{_segment_anchor(d['id'])}' "
+            f"style='left:{left:.3f}%' title='{esc(d['start_tc'])} {esc(name_zh)}'>"
+            f"<span>{esc(d['peak_frame'])}</span></a>"
+        )
+    timeline_html = (
+        "<div class='timeline'><div class='track'></div>"
+        + "".join(timeline_items)
+        + "</div>"
+        if timeline_items
+        else "<p class='empty'>未发现异常时间点。</p>"
+    )
+
     seg_cards = []
     for s in ordered:
         d = s.to_dict()
@@ -175,29 +266,55 @@ def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
         if d["preview"]:
             rel = _rel_preview(d["preview"], report_dir)
             img_html = f"<img src='{esc(rel)}' loading='lazy'/>"
-        ev = esc(json.dumps(d["evidence"], ensure_ascii=False))
+        ev = esc(json.dumps(d["evidence"], ensure_ascii=False, indent=2))
+        anchor = _segment_anchor(d["id"])
         seg_cards.append(
             f"""
-            <div class='card' data-sev='{esc(sev)}'>
+            <article class='card' id='{anchor}' data-sev='{esc(sev)}'>
               <div class='card-head'>
                 <span class='badge' style='background:{color}'>{esc(sev_zh)}</span>
-                <span class='tc'>{esc(d['start_tc'])} - {esc(d['end_tc'])}</span>
+                <div>
+                  <div class='cname'>{esc(name_zh)} <code>{esc(d['type'])}</code></div>
+                  <div class='tc'>{esc(d['start_tc'])} - {esc(d['end_tc'])} · 帧 {esc(d['start_frame'])}-{esc(d['end_frame'])} · 峰值帧 {esc(d['peak_frame'])}</div>
+                </div>
               </div>
-              <div class='cname'>{esc(name_zh)} <code>{esc(d['type'])}</code></div>
               {img_html}
               <div class='cbody'>
                 <div class='desc'>{esc(desc_zh)}</div>
                 <div class='hint'><b>复核建议：</b>{esc(hint_zh)}</div>
-                <div class='src'>问题来源：<code>{esc(d['source'])}</code> &middot; 命中 {d['finding_count']} 帧</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>{esc(d['finding_count'])}</span>
+                  <span><b>问题来源</b><code>{esc(d['source'])}</code></span>
+                  <span><b>阶段</b><code>{esc(s.source)}</code></span>
+                </div>
+                <div class='evidence'>{_evidence_items(d.get('evidence') or {})}</div>
                 <details><summary>证据 evidence</summary><pre class='ev'>{ev}</pre></details>
               </div>
-            </div>
+            </article>
             """
         )
     seg_html = "\n".join(seg_cards) or "<p>无失败片段。</p>"
 
     perf_html = ""
     if perf:
+        stage_rows = ""
+        stage_labels = {
+            "setup": "准备 / 扫描",
+            "mask_io": "mask 读取与统计",
+            "yolo": "YOLO 读帧与推理",
+            "sam2": "SAM2 时序分析",
+            "preview": "预览图生成",
+            "report": "报告写出",
+        }
+        for key, label in stage_labels.items():
+            if key in perf.get("stage_seconds", {}):
+                stage_rows += f"<tr><td>{esc(label)}</td><td>{esc(perf['stage_seconds'].get(key))} s</td></tr>"
+        stage_table = (
+            "<h3>阶段耗时</h3><table class='wide'><tr><th>阶段</th><th>耗时</th></tr>"
+            f"{stage_rows}</table>"
+            if stage_rows
+            else ""
+        )
         perf_html = f"""
   <h2>性能报告</h2>
   <table class='wide'>
@@ -209,7 +326,9 @@ def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
     <tr><td>数据吞吐</td><td><b>{esc(perf.get('throughput_mb_s'))} MB/s</b></td></tr>
     <tr><td>处理速度</td><td>{esc(perf.get('frames_per_second'))} 帧/s</td></tr>
     <tr><td>实时倍率</td><td>{esc(perf.get('realtime_factor'))}x（视频时长 / 处理耗时）</td></tr>
-  </table>"""
+    <tr><td>YOLO 策略</td><td>{esc(perf.get('yolo_policy', 'all'))}，实际 YOLO 帧 {esc(perf.get('yolo_frames', ''))}/{esc(perf.get('sampled_frames', ''))}（{esc(perf.get('yolo_frame_ratio', ''))}）</td></tr>
+  </table>
+  {stage_table}"""
 
     legend = (
         "<div class='legend'>预览图例："
@@ -227,45 +346,72 @@ def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
 <meta name='viewport' content='width=device-width, initial-scale=1'/>
 <title>抠图质检报告</title>
 <style>
-  body {{ font-family: -apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, Roboto, sans-serif; margin:0; background:#0f1115; color:#e6e6e6; }}
-  header {{ padding:20px 24px; background:#161a22; border-bottom:1px solid #262b36; }}
-  h1 {{ margin:0 0 6px; font-size:20px; }}
-  h2 {{ font-size:16px; margin:18px 0 8px; }}
-  .meta {{ color:#9aa4b2; font-size:13px; line-height:1.6; }}
-  .summary {{ display:flex; gap:14px; padding:18px 24px; flex-wrap:wrap; align-items:stretch; }}
-  .pill {{ background:#1c2230; padding:12px 16px; border-radius:10px; min-width:120px; }}
-  .pill .n {{ font-size:24px; font-weight:700; }}
-  .pill .l {{ font-size:12px; color:#9aa4b2; }}
-  .decision {{ font-size:18px; font-weight:700; }}
-  .risk-HIGH {{ color:#ff6b6b; }} .risk-MEDIUM {{ color:#ffa94d; }}
-  .risk-LOW {{ color:#ffd43b; }} .risk-NONE {{ color:#51cf66; }}
-  .verdict {{ padding:0 24px; color:#cbd3df; font-size:14px; }}
-  section {{ padding:8px 24px 24px; }}
-  table {{ border-collapse:collapse; width:100%; max-width:560px; font-size:13px; }}
-  table.wide {{ max-width:920px; }}
-  td, th {{ border:1px solid #262b36; padding:6px 10px; text-align:left; vertical-align:top; }}
-  th {{ background:#1c2230; }}
-  .st-ok {{ color:#51cf66; }} .st-missing {{ color:#ff6b6b; }}
-  code {{ background:#0c0f14; padding:1px 5px; border-radius:4px; font-size:11px; color:#9aa4b2; }}
-  .filters {{ padding:0 24px; }}
-  .filters button {{ background:#1c2230; color:#e6e6e6; border:1px solid #2c3340; border-radius:8px; padding:6px 12px; margin-right:8px; cursor:pointer; font-size:13px; }}
-  .filters button.active {{ background:#2d3a52; }}
-  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px; }}
-  .card {{ background:#161a22; border:1px solid #262b36; border-radius:10px; overflow:hidden; }}
-  .card img {{ width:100%; display:block; }}
-  .card-head {{ display:flex; gap:8px; align-items:center; padding:10px 10px 0; }}
-  .badge {{ color:#fff; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700; }}
-  .tc {{ color:#9aa4b2; font-size:12px; }}
-  .cname {{ padding:6px 10px; font-weight:700; font-size:15px; }}
-  .cbody {{ padding:8px 10px 12px; }}
-  .desc {{ font-size:13px; color:#d6dbe3; margin-bottom:6px; }}
-  .hint {{ font-size:12.5px; color:#ffd9a8; margin-bottom:6px; }}
-  .src {{ color:#9aa4b2; font-size:12px; margin-bottom:6px; }}
-  details summary {{ cursor:pointer; color:#7aa2ff; font-size:12px; }}
-  pre.ev {{ margin:6px 0 0; padding:8px; background:#0c0f14; font-size:11px; color:#9aa4b2; white-space:pre-wrap; word-break:break-word; border-radius:6px; }}
+  * {{ box-sizing:border-box; }}
+  html {{ scroll-behavior:smooth; }}
+  body {{ font-family:-apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, Roboto, sans-serif; margin:0; background:#111318; color:#edf0f4; }}
+  header {{ padding:22px 28px; background:#191d25; border-bottom:1px solid #2b313d; position:sticky; top:0; z-index:5; }}
+  h1 {{ margin:0 0 8px; font-size:22px; letter-spacing:0; }}
+  h2 {{ font-size:17px; margin:0 0 12px; }}
+  h3 {{ font-size:14px; margin:0 0 8px; color:#cfd6e2; }}
+  a {{ color:#8bb2ff; text-decoration:none; }}
+  a:hover {{ text-decoration:underline; }}
+  .meta {{ color:#a7b0bf; font-size:13px; line-height:1.6; word-break:break-all; }}
+  .summary {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(136px,1fr)); gap:12px; padding:18px 28px 8px; }}
+  .pill {{ background:#1b202b; border:1px solid #2c3442; padding:14px 16px; border-radius:8px; min-height:78px; }}
+  .pill .n {{ font-size:28px; font-weight:750; line-height:1.1; }}
+  .pill .l {{ font-size:12px; color:#a7b0bf; margin-bottom:8px; }}
+  .decision {{ font-size:18px; font-weight:750; }}
+  .risk-HIGH {{ color:#ff6961; }} .risk-MEDIUM {{ color:#ffb15c; }}
+  .risk-LOW {{ color:#ffd45a; }} .risk-NONE {{ color:#5fd185; }}
+  .verdict {{ padding:4px 28px 18px; color:#cfd6e2; font-size:14px; }}
+  section {{ padding:18px 28px; }}
+  .panel {{ background:#171b23; border:1px solid #2b313d; border-radius:8px; padding:16px; margin-bottom:16px; }}
+  table {{ border-collapse:collapse; width:100%; font-size:13px; }}
+  table.wide, .review-table {{ max-width:none; }}
+  td, th {{ border-bottom:1px solid #2b313d; padding:9px 10px; text-align:left; vertical-align:top; }}
+  th {{ color:#aeb7c6; font-weight:650; background:#202633; }}
+  tr:last-child td {{ border-bottom:0; }}
+  .st-ok {{ color:#5fd185; }} .st-missing {{ color:#ff6961; }}
+  code {{ background:#0d1016; padding:2px 5px; border-radius:4px; font-size:11px; color:#aeb7c6; word-break:break-all; }}
+  .muted {{ color:#a7b0bf; font-size:12px; line-height:1.45; }}
+  .empty {{ color:#a7b0bf; margin:0; }}
+  .dot {{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:8px; }}
+  .dot-high, .tick-high {{ background:#ff5148; }}
+  .dot-medium, .tick-medium {{ background:#ff9f40; }}
+  .dot-warning, .tick-warning {{ background:#f5d45f; }}
+  .timeline {{ position:relative; height:70px; margin:10px 4px 2px; }}
+  .track {{ position:absolute; left:0; right:0; top:32px; height:8px; border-radius:8px; background:#2b313d; }}
+  .tick {{ position:absolute; top:18px; width:18px; height:36px; border-radius:7px; border:2px solid #111318; box-shadow:0 0 0 1px rgba(255,255,255,.18); }}
+  .tick span {{ position:absolute; top:39px; left:50%; transform:translateX(-50%); color:#a7b0bf; font-size:10px; white-space:nowrap; }}
+  .filters {{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }}
+  .filters button {{ background:#202633; color:#edf0f4; border:1px solid #354052; border-radius:7px; padding:7px 12px; cursor:pointer; font-size:13px; }}
+  .filters button.active {{ background:#34425a; border-color:#6e8ccc; }}
+  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(390px,1fr)); gap:16px; align-items:start; }}
+  .card {{ background:#171b23; border:1px solid #2b313d; border-radius:8px; overflow:hidden; scroll-margin-top:120px; }}
+  .card:target {{ border-color:#8bb2ff; box-shadow:0 0 0 2px rgba(139,178,255,.25); }}
+  .card img {{ width:100%; display:block; background:#0d1016; }}
+  .card-head {{ display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start; padding:12px 12px 8px; }}
+  .badge {{ color:#fff; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:750; }}
+  .tc {{ color:#a7b0bf; font-size:12px; line-height:1.45; }}
+  .cname {{ font-weight:750; font-size:16px; margin-bottom:5px; }}
+  .cbody {{ padding:12px; }}
+  .desc {{ font-size:14px; color:#e3e7ee; margin-bottom:8px; line-height:1.55; }}
+  .hint {{ font-size:13px; color:#ffd49a; margin-bottom:10px; line-height:1.55; }}
+  .facts {{ display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }}
+  .facts span, .evitem {{ display:inline-flex; align-items:center; gap:6px; background:#202633; border:1px solid #2f3746; border-radius:6px; padding:6px 8px; color:#cfd6e2; font-size:12px; }}
+  .facts b, .evitem b {{ color:#f0f3f8; font-weight:650; }}
+  .evidence {{ display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }}
+  details summary {{ cursor:pointer; color:#8bb2ff; font-size:12px; }}
+  pre.ev {{ margin:8px 0 0; padding:10px; background:#0d1016; font-size:11px; color:#aeb7c6; white-space:pre-wrap; word-break:break-word; border-radius:6px; }}
   ul {{ margin:6px 0; }} ul.blocking li {{ color:#ffb3b3; }}
-  .legend {{ padding:0 24px 8px; color:#9aa4b2; font-size:12px; }}
-  .legend .lg {{ margin-left:12px; }}
+  .legend {{ color:#a7b0bf; font-size:12px; margin-bottom:10px; line-height:1.7; }}
+  .legend .lg {{ margin-right:14px; white-space:nowrap; }}
+  .support {{ display:grid; grid-template-columns:minmax(280px,1fr) minmax(280px,1fr); gap:16px; }}
+  @media (max-width:760px) {{
+    header {{ position:static; padding:18px; }}
+    .summary, section {{ padding-left:18px; padding-right:18px; }}
+    .grid, .support {{ grid-template-columns:1fr; }}
+  }}
 </style></head>
 <body>
 <header>
@@ -285,27 +431,43 @@ def write_html(result: Dict, segments: List[Segment], path: Path) -> None:
 </div>
 <div class='verdict'>判定规则：出现高危即「需人工复核（高）」；仅中等即「需人工复核（中）」；仅警告为「通过（低）」；无异常为「通过」。</div>
 <section>
-  {perf_html}
-</section>
-<section>
-  <h2>输入状态</h2>
-  <table><tr><th>产物</th><th>状态</th><th>帧数</th></tr>{rows_status}</table>
-  {block_section}
-  <h2>告警类型概览</h2>
-  {type_table}
-  <h2>提示 / 警告</h2>
-  <ul>{warn_html}</ul>
+  <div class='panel'>
+    <h2>异常时间轴</h2>
+    {timeline_html}
+  </div>
+  <div class='panel'>
+    <h2>复核重点</h2>
+    {focus_table}
+  </div>
 </section>
 <section>
   <h2>失败片段（{len(segments)}）</h2>
-  {legend}
   <div class='filters'>
     <button data-f='all' class='active' onclick='flt(this,"all")'>全部</button>
     <button data-f='high' onclick='flt(this,"high")'>仅高危</button>
     <button data-f='medium' onclick='flt(this,"medium")'>仅中等</button>
     <button data-f='warning' onclick='flt(this,"warning")'>仅警告</button>
   </div>
+  {legend}
   <div class='grid' id='grid'>{seg_html}</div>
+</section>
+<section class='support'>
+  <div class='panel'>
+    <h2>告警类型概览</h2>
+    {type_table}
+  </div>
+  <div class='panel'>
+    <h2>提示 / 警告</h2>
+    <ul>{warn_html}</ul>
+    {block_section}
+  </div>
+  <div class='panel'>
+    <h2>输入状态</h2>
+    <table><tr><th>产物</th><th>状态</th><th>帧数</th></tr>{rows_status}</table>
+  </div>
+  <div class='panel'>
+    {perf_html}
+  </div>
 </section>
 <script>
 function flt(btn, sev) {{

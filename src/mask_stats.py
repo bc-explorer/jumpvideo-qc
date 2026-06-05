@@ -21,17 +21,18 @@ def area(mask: Optional[np.ndarray], threshold: float = 0.5) -> int:
     if mask is None:
         return 0
     b = to_binary(mask, threshold)
-    return int(b.sum())
+    return int(cv2.countNonZero(b))
 
 
 def bbox(mask: Optional[np.ndarray], threshold: float = 0.5) -> Optional[BBox]:
     if mask is None:
         return None
     b = to_binary(mask, threshold)
-    ys, xs = np.where(b > 0)
-    if xs.size == 0:
+    pts = cv2.findNonZero(b)
+    if pts is None:
         return None
-    return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+    x, y, w, h = cv2.boundingRect(pts)
+    return int(x), int(y), int(x + w), int(y + h)
 
 
 def bbox_center(bb: Optional[BBox]) -> Optional[Tuple[float, float]]:
@@ -48,8 +49,8 @@ def iou(a: Optional[np.ndarray], b: Optional[np.ndarray], threshold: float = 0.5
     bb = to_binary(b, threshold)
     if ba.shape != bb.shape:
         bb = cv2.resize(bb, (ba.shape[1], ba.shape[0]), interpolation=cv2.INTER_NEAREST)
-    inter = int(np.logical_and(ba, bb).sum())
-    union = int(np.logical_or(ba, bb).sum())
+    inter = int(cv2.countNonZero(cv2.bitwise_and(ba, bb)))
+    union = int(cv2.countNonZero(cv2.bitwise_or(ba, bb)))
     if union == 0:
         return 1.0 if inter == 0 else 0.0
     return inter / union
@@ -108,7 +109,7 @@ def coverage_in_box(
     sub = b[y0:y1, x0:x1]
     if sub.size == 0:
         return 0.0
-    return float(sub.sum()) / float(sub.size)
+    return float(cv2.countNonZero(sub)) / float(sub.size)
 
 
 def restrict_to_box(mask: Optional[np.ndarray], box: BBox) -> Optional[np.ndarray]:
@@ -140,10 +141,10 @@ def coverage_in_mask(
     r = to_binary(region, 0.5)
     if a.shape != r.shape:
         a = cv2.resize(a, (r.shape[1], r.shape[0]), interpolation=cv2.INTER_NEAREST)
-    denom = int(r.sum())
+    denom = int(cv2.countNonZero(r))
     if denom == 0:
         return 0.0
-    return float(np.logical_and(a, r).sum()) / float(denom)
+    return float(cv2.countNonZero(cv2.bitwise_and(a, r))) / float(denom)
 
 
 def median(values: List[float]) -> float:

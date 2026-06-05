@@ -45,10 +45,18 @@ def load_binary(
     dir_path: Optional[str], frame_idx: int, threshold: float = 0.5
 ) -> Optional[np.ndarray]:
     """Load a mask as a uint8 {0,1} array. None if missing."""
-    alpha = load_alpha(dir_path, frame_idx)
-    if alpha is None:
+    if not dir_path:
         return None
-    return (alpha >= threshold).astype(np.uint8)
+    p = frame_index.find_frame_file(Path(dir_path), frame_idx)
+    if p is None:
+        return None
+    img = _read_gray(p)
+    if img is None:
+        return None
+    # Match load_alpha(... ) >= threshold without allocating a float32 image.
+    cutoff = int(np.ceil(float(threshold) * 255.0))
+    cutoff = max(0, min(cutoff, 255))
+    return (img >= cutoff).astype(np.uint8)
 
 
 def load_frame_bgr(frames_dir: Optional[str], frame_idx: int) -> Optional[np.ndarray]:

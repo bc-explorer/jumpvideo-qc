@@ -28,6 +28,12 @@ def main() -> int:
         action="store_true",
         help="Do not write qc_config.yaml into the task dir",
     )
+    parser.add_argument(
+        "--yolo-frame-policy",
+        choices=["all", "smart"],
+        default=None,
+        help="YOLO sampling policy: all preserves recall; smart runs YOLO on mask-change candidates and baseline frames.",
+    )
     parser.add_argument("--json", action="store_true", help="Print summary JSON to stdout")
     args = parser.parse_args()
 
@@ -37,6 +43,8 @@ def main() -> int:
         return 1
 
     cfg = load_config(task_root, mode=args.mode)
+    if args.yolo_frame_policy:
+        cfg.runtime["yolo_frame_policy"] = args.yolo_frame_policy
     result = run_qc(
         task_root,
         config=cfg,
@@ -59,6 +67,18 @@ def main() -> int:
             f"{perf['frames_per_second']} frame/s, "
             f"realtime {perf['realtime_factor']}x"
         )
+        stages = perf.get("stage_seconds") or {}
+        if stages:
+            print(
+                "Stages: "
+                + ", ".join(f"{name}={seconds}s" for name, seconds in stages.items())
+            )
+        if "yolo_frames" in perf:
+            print(
+                f"YOLO: policy={perf.get('yolo_policy')} "
+                f"frames={perf.get('yolo_frames')}/{perf.get('sampled_frames')} "
+                f"ratio={perf.get('yolo_frame_ratio')}"
+            )
     print(f"Report: {task_root / cfg.outputs.get('report_dir', 'qc') / 'report.html'}")
 
     if args.json:
@@ -71,6 +91,7 @@ def main() -> int:
                 "input_status",
                 "blocking_messages",
                 "warnings",
+                "performance",
                 "elapsed_seconds",
             )
         }
