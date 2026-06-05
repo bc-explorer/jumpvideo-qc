@@ -51,6 +51,8 @@ streamlit run app.py
 
 样例数据目录：[`sample_data/`](sample_data/) — 将你的任务文件夹复制进去后再跑上述命令。
 
+Smart 快速粗筛报告示例：[`docs/examples/smart_report.html`](docs/examples/smart_report.html)。
+
 ## 报告阅读
 
 运行后会在任务目录下写入：
@@ -120,6 +122,8 @@ flowchart LR
 |------|-------------|----------|
 | `all` | 默认；`--yolo-frame-policy all` | 完整质检，优先保证召回。每个采样帧都跑 YOLO seg + pose。 |
 | `smart` | `--yolo-frame-policy smart` | 快速粗筛。只对 mask 面积突变点附近和固定基准帧跑 YOLO。更快，但可能漏掉部分依赖 YOLO 姿态/物体检测的告警。 |
+
+Smart 报告效果预览：[`docs/examples/smart_report.html`](docs/examples/smart_report.html)。
 
 相关配置在 [`config/qc_config.default.yaml`](config/qc_config.default.yaml)：
 

@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang='zh-CN'><head><meta charset='utf-8'/>
+<meta name='viewport' content='width=device-width, initial-scale=1'/>
+<title>抠图质检报告</title>
+<style>
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { font-family:-apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, Roboto, sans-serif; margin:0; background:#111318; color:#edf0f4; }
+  header { padding:22px 28px; background:#191d25; border-bottom:1px solid #2b313d; position:sticky; top:0; z-index:5; }
+  h1 { margin:0 0 8px; font-size:22px; letter-spacing:0; }
+  h2 { font-size:17px; margin:0 0 12px; }
+  h3 { font-size:14px; margin:0 0 8px; color:#cfd6e2; }
+  a { color:#8bb2ff; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .meta { color:#a7b0bf; font-size:13px; line-height:1.6; word-break:break-all; }
+  .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(136px,1fr)); gap:12px; padding:18px 28px 8px; }
+  .pill { background:#1b202b; border:1px solid #2c3442; padding:14px 16px; border-radius:8px; min-height:78px; }
+  .pill .n { font-size:28px; font-weight:750; line-height:1.1; }
+  .pill .l { font-size:12px; color:#a7b0bf; margin-bottom:8px; }
+  .decision { font-size:18px; font-weight:750; }
+  .risk-HIGH { color:#ff6961; } .risk-MEDIUM { color:#ffb15c; }
+  .risk-LOW { color:#ffd45a; } .risk-NONE { color:#5fd185; }
+  .verdict { padding:4px 28px 18px; color:#cfd6e2; font-size:14px; }
+  section { padding:18px 28px; }
+  .panel { background:#171b23; border:1px solid #2b313d; border-radius:8px; padding:16px; margin-bottom:16px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  table.wide, .review-table { max-width:none; }
+  td, th { border-bottom:1px solid #2b313d; padding:9px 10px; text-align:left; vertical-align:top; }
+  th { color:#aeb7c6; font-weight:650; background:#202633; }
+  tr:last-child td { border-bottom:0; }
+  .st-ok { color:#5fd185; } .st-missing { color:#ff6961; }
+  code { background:#0d1016; padding:2px 5px; border-radius:4px; font-size:11px; color:#aeb7c6; word-break:break-all; }
+  .muted { color:#a7b0bf; font-size:12px; line-height:1.45; }
+  .empty { color:#a7b0bf; margin:0; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:8px; }
+  .dot-high, .tick-high { background:#ff5148; }
+  .dot-medium, .tick-medium { background:#ff9f40; }
+  .dot-warning, .tick-warning { background:#f5d45f; }
+  .timeline { position:relative; height:70px; margin:10px 4px 2px; }
+  .track { position:absolute; left:0; right:0; top:32px; height:8px; border-radius:8px; background:#2b313d; }
+  .tick { position:absolute; top:18px; width:18px; height:36px; border-radius:7px; border:2px solid #111318; box-shadow:0 0 0 1px rgba(255,255,255,.18); }
+  .tick span { position:absolute; top:39px; left:50%; transform:translateX(-50%); color:#a7b0bf; font-size:10px; white-space:nowrap; }
+  .filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+  .filters button { background:#202633; color:#edf0f4; border:1px solid #354052; border-radius:7px; padding:7px 12px; cursor:pointer; font-size:13px; }
+  .filters button.active { background:#34425a; border-color:#6e8ccc; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(390px,1fr)); gap:16px; align-items:start; }
+  .card { background:#171b23; border:1px solid #2b313d; border-radius:8px; overflow:hidden; scroll-margin-top:120px; }
+  .card:target { border-color:#8bb2ff; box-shadow:0 0 0 2px rgba(139,178,255,.25); }
+  .card img { width:100%; display:block; background:#0d1016; }
+  .card-head { display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start; padding:12px 12px 8px; }
+  .badge { color:#fff; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:750; }
+  .tc { color:#a7b0bf; font-size:12px; line-height:1.45; }
+  .cname { font-weight:750; font-size:16px; margin-bottom:5px; }
+  .cbody { padding:12px; }
+  .desc { font-size:14px; color:#e3e7ee; margin-bottom:8px; line-height:1.55; }
+  .hint { font-size:13px; color:#ffd49a; margin-bottom:10px; line-height:1.55; }
+  .facts { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
+  .facts span, .evitem { display:inline-flex; align-items:center; gap:6px; background:#202633; border:1px solid #2f3746; border-radius:6px; padding:6px 8px; color:#cfd6e2; font-size:12px; }
+  .facts b, .evitem b { color:#f0f3f8; font-weight:650; }
+  .evidence { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  details summary { cursor:pointer; color:#8bb2ff; font-size:12px; }
+  pre.ev { margin:8px 0 0; padding:10px; background:#0d1016; font-size:11px; color:#aeb7c6; white-space:pre-wrap; word-break:break-word; border-radius:6px; }
+  ul { margin:6px 0; } ul.blocking li { color:#ffb3b3; }
+  .legend { color:#a7b0bf; font-size:12px; margin-bottom:10px; line-height:1.7; }
+  .legend .lg { margin-right:14px; white-space:nowrap; }
+  .support { display:grid; grid-template-columns:minmax(280px,1fr) minmax(280px,1fr); gap:16px; }
+  @media (max-width:760px) {
+    header { position:static; padding:18px; }
+    .summary, section { padding-left:18px; padding-right:18px; }
+    .grid, .support { grid-template-columns:1fr; }
+  }
+</style></head>
+<body>
+<header>
+  <h1>直播带货抠图质检报告</h1>
+  <div class='meta'>任务：/Users/tangcong/Projects/video_qc_fast/sample_data/20260605_161143_4db025f3<br/>
+  类型：live_commerce &middot; 检测模式：sensitive &middot;
+  分辨率：1080×1906 &middot;
+  帧率：30.0 fps &middot; 总帧数：1277</div>
+</header>
+<div class='summary'>
+  <div class='pill'><div class='l'>结论</div><div class='decision'>需人工复核</div></div>
+  <div class='pill'><div class='l'>风险等级</div><div class='decision risk-HIGH'>高</div></div>
+  <div class='pill'><div class='n'>13</div><div class='l'>高危</div></div>
+  <div class='pill'><div class='n'>9</div><div class='l'>中等</div></div>
+  <div class='pill'><div class='n'>0</div><div class='l'>警告</div></div>
+  <div class='pill'><div class='n'>22</div><div class='l'>失败片段</div></div>
+</div>
+<div class='verdict'>判定规则：出现高危即「需人工复核（高）」；仅中等即「需人工复核（中）」；仅警告为「通过（低）」；无异常为「通过」。</div>
+<section>
+  <div class='panel'>
+    <h2>异常时间轴</h2>
+    <div class='timeline'><div class='track'></div><a class='tick tick-high' href='#seg-000' style='left:0.000%' title='00:00.0 主播手持商品掉面积'><span>0</span></a><a class='tick tick-high' href='#seg-001' style='left:0.000%' title='00:00.0 SAM2 对象掉面积'><span>0</span></a><a class='tick tick-high' href='#seg-004' style='left:5.486%' title='00:01.3 主播手持商品掉面积'><span>70</span></a><a class='tick tick-high' href='#seg-005' style='left:5.486%' title='00:01.3 SAM2 对象掉面积'><span>70</span></a><a class='tick tick-high' href='#seg-007' style='left:31.740%' title='00:12.5 SAM2 对象掉面积'><span>405</span></a><a class='tick tick-high' href='#seg-009' style='left:38.793%' title='00:15.5 主播手持商品掉面积'><span>495</span></a><a class='tick tick-high' href='#seg-010' style='left:38.793%' title='00:15.5 SAM2 对象掉面积'><span>495</span></a><a class='tick tick-high' href='#seg-011' style='left:41.928%' title='00:16.8 SAM2 对象掉面积'><span>535</span></a><a class='tick tick-high' href='#seg-014' style='left:67.398%' title='00:27.7 SAM2 对象掉面积'><span>860</span></a><a class='tick tick-high' href='#seg-016' style='left:74.451%' title='00:30.7 SAM2 对象掉面积'><span>950</span></a><a class='tick tick-high' href='#seg-019' style='left:85.815%' title='00:35.5 SAM2 对象掉面积'><span>1095</span></a><a class='tick tick-high' href='#seg-020' style='left:90.909%' title='00:37.7 SAM2 对象掉面积'><span>1160</span></a><a class='tick tick-high' href='#seg-021' style='left:99.200%' title='00:41.5 SAM2 对象掉面积'><span>1275</span></a><a class='tick tick-medium' href='#seg-002' style='left:0.392%' title='00:00.0 SAM2 漂移'><span>5</span></a><a class='tick tick-medium' href='#seg-003' style='left:5.094%' title='00:01.2 SAM2 背景泄漏'><span>65</span></a><a class='tick tick-medium' href='#seg-006' style='left:7.837%' title='00:02.3 SAM2 漂移'><span>100</span></a><a class='tick tick-medium' href='#seg-008' style='left:38.401%' title='00:15.3 SAM2 背景泄漏'><span>490</span></a><a class='tick tick-medium' href='#seg-012' style='left:42.712%' title='00:17.2 SAM2 漂移'><span>545</span></a><a class='tick tick-medium' href='#seg-013' style='left:43.103%' title='00:17.3 SAM2 背景泄漏'><span>550</span></a><a class='tick tick-medium' href='#seg-015' style='left:71.317%' title='00:29.3 SAM2 背景泄漏'><span>910</span></a><a class='tick tick-medium' href='#seg-017' style='left:75.627%' title='00:31.2 SAM2 漂移'><span>965</span></a><a class='tick tick-medium' href='#seg-018' style='left:85.423%' title='00:35.3 SAM2 漂移'><span>1090</span></a></div>
+  </div>
+  <div class='panel'>
+    <h2>复核重点</h2>
+    <table class='review-table'><tr><th>等级</th><th>时间点</th><th>帧号</th><th>质量问题</th></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-000'>00:00.0 - 00:01.0</a></td><td>0 - 30<span class='muted'> / 峰值 0</span></td><td><b>主播手持商品掉面积</b><br/><span class='muted'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-001'>00:00.0 - 00:01.0</a></td><td>0 - 30<span class='muted'> / 峰值 0</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-004'>00:01.3 - 00:03.3</a></td><td>40 - 100<span class='muted'> / 峰值 70</span></td><td><b>主播手持商品掉面积</b><br/><span class='muted'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-005'>00:01.3 - 00:05.0</a></td><td>40 - 150<span class='muted'> / 峰值 70</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-007'>00:12.5 - 00:14.5</a></td><td>375 - 435<span class='muted'> / 峰值 405</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-009'>00:15.5 - 00:17.5</a></td><td>465 - 525<span class='muted'> / 峰值 495</span></td><td><b>主播手持商品掉面积</b><br/><span class='muted'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-010'>00:15.5 - 00:17.5</a></td><td>465 - 525<span class='muted'> / 峰值 495</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-011'>00:16.8 - 00:19.2</a></td><td>505 - 575<span class='muted'> / 峰值 535</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-014'>00:27.7 - 00:29.7</a></td><td>830 - 890<span class='muted'> / 峰值 860</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-016'>00:30.7 - 00:33.3</a></td><td>920 - 1000<span class='muted'> / 峰值 950</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-019'>00:35.5 - 00:37.5</a></td><td>1065 - 1125<span class='muted'> / 峰值 1095</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr><tr class='row-high'><td><span class='dot dot-high'></span>高危</td><td><a href='#seg-020'>00:37.7 - 00:39.8</a></td><td>1130 - 1195<span class='muted'> / 峰值 1160</span></td><td><b>SAM2 对象掉面积</b><br/><span class='muted'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</span></td></tr></table>
+  </div>
+</section>
+<section>
+  <h2>失败片段（22）</h2>
+  <div class='filters'>
+    <button data-f='all' class='active' onclick='flt(this,"all")'>全部</button>
+    <button data-f='high' onclick='flt(this,"high")'>仅高危</button>
+    <button data-f='medium' onclick='flt(this,"medium")'>仅中等</button>
+    <button data-f='warning' onclick='flt(this,"warning")'>仅警告</button>
+  </div>
+  <div class='legend'>预览图例：<span class='lg' style='color:#00c800'>● 人体实例掩膜</span><span class='lg' style='color:#00ffff'>● combined alpha 边界</span><span class='lg' style='color:#ff69b4'>● human alpha 边界</span><span class='lg' style='color:#ffd700'>● 人脸 ROI</span><span class='lg' style='color:#0064ff'>● 手部点</span><span class='lg' style='color:#ff0000'>● 疑似商品/证据框</span></div>
+  <div class='grid' id='grid'>
+            <article class='card' id='seg-000' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>主播手持商品掉面积 <code>host_product_drop</code></div>
+                  <div class='tc'>00:00.0 - 00:01.0 · 帧 0-30 · 峰值帧 0</div>
+                </div>
+              </div>
+              <img src='previews/seg_000_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</div>
+                <div class='hint'><b>复核建议：</b>检查 masks/combined/host_hand_products 该时段连续性。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>product_missing_from_final_keep</code></span>
+                  <span><b>阶段</b><code>product_missing_from_final_keep</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>当前面积</b>20185</span><span class='evitem'><b>前后参考面积</b>57369</span><span class='evitem'><b>下降比例</b>0.648</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;area&quot;: 20185,
+  &quot;reference_median&quot;: 57369,
+  &quot;drop_ratio&quot;: 0.648
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-001' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:00.0 - 00:01.0 · 帧 0-30 · 峰值帧 0</div>
+                </div>
+              </div>
+              <img src='previews/seg_000_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>3</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>14165</span><span class='evitem'><b>前后参考面积</b>54183</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 14165,
+  &quot;reference_median&quot;: 54183
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-004' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>主播手持商品掉面积 <code>host_product_drop</code></div>
+                  <div class='tc'>00:01.3 - 00:03.3 · 帧 40-100 · 峰值帧 70</div>
+                </div>
+              </div>
+              <img src='previews/seg_004_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</div>
+                <div class='hint'><b>复核建议：</b>检查 masks/combined/host_hand_products 该时段连续性。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>product_missing_from_final_keep</code></span>
+                  <span><b>阶段</b><code>product_missing_from_final_keep</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>当前面积</b>14416</span><span class='evitem'><b>前后参考面积</b>36709</span><span class='evitem'><b>下降比例</b>0.607</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;area&quot;: 14416,
+  &quot;reference_median&quot;: 36709,
+  &quot;drop_ratio&quot;: 0.607
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-005' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:01.3 - 00:05.0 · 帧 40-150 · 峰值帧 70</div>
+                </div>
+              </div>
+              <img src='previews/seg_004_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>7</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>6189</span><span class='evitem'><b>前后参考面积</b>29905</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 6189,
+  &quot;reference_median&quot;: 29905
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-007' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:12.5 - 00:14.5 · 帧 375-435 · 峰值帧 405</div>
+                </div>
+              </div>
+              <img src='previews/seg_007_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>10012</span><span class='evitem'><b>前后参考面积</b>25194</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 10012,
+  &quot;reference_median&quot;: 25194
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-009' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>主播手持商品掉面积 <code>host_product_drop</code></div>
+                  <div class='tc'>00:15.5 - 00:17.5 · 帧 465-525 · 峰值帧 495</div>
+                </div>
+              </div>
+              <img src='previews/seg_009_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</div>
+                <div class='hint'><b>复核建议：</b>检查 masks/combined/host_hand_products 该时段连续性。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>product_missing_from_final_keep</code></span>
+                  <span><b>阶段</b><code>product_missing_from_final_keep</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>当前面积</b>18587</span><span class='evitem'><b>前后参考面积</b>41585</span><span class='evitem'><b>下降比例</b>0.553</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;area&quot;: 18587,
+  &quot;reference_median&quot;: 41585,
+  &quot;drop_ratio&quot;: 0.553
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-010' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:15.5 - 00:17.5 · 帧 465-525 · 峰值帧 495</div>
+                </div>
+              </div>
+              <img src='previews/seg_009_host_product_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>10257</span><span class='evitem'><b>前后参考面积</b>37120</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 10257,
+  &quot;reference_median&quot;: 37120
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-011' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:16.8 - 00:19.2 · 帧 505-575 · 峰值帧 535</div>
+                </div>
+              </div>
+              <img src='previews/seg_011_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>3</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>当前面积</b>0</span><span class='evitem'><b>前后参考面积</b>50475</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;area&quot;: 0,
+  &quot;reference_median&quot;: 50475
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-014' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:27.7 - 00:29.7 · 帧 830-890 · 峰值帧 860</div>
+                </div>
+              </div>
+              <img src='previews/seg_014_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>589</span><span class='evitem'><b>前后参考面积</b>1099</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 589,
+  &quot;reference_median&quot;: 1099
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-016' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:30.7 - 00:33.3 · 帧 920-1000 · 峰值帧 950</div>
+                </div>
+              </div>
+              <img src='previews/seg_016_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>5</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>1155</span><span class='evitem'><b>前后参考面积</b>3815</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 1155,
+  &quot;reference_median&quot;: 3815
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-019' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:35.5 - 00:37.5 · 帧 1065-1125 · 峰值帧 1095</div>
+                </div>
+              </div>
+              <img src='previews/seg_019_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>当前面积</b>14416</span><span class='evitem'><b>前后参考面积</b>57425</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;area&quot;: 14416,
+  &quot;reference_median&quot;: 57425
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-020' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:37.7 - 00:39.8 · 帧 1130-1195 · 峰值帧 1160</div>
+                </div>
+              </div>
+              <img src='previews/seg_020_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>1502</span><span class='evitem'><b>前后参考面积</b>6856</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 1502,
+  &quot;reference_median&quot;: 6856
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-021' data-sev='high'>
+              <div class='card-head'>
+                <span class='badge' style='background:#c0392b'>高危</span>
+                <div>
+                  <div class='cname'>SAM2 对象掉面积 <code>sam2_object_drop</code></div>
+                  <div class='tc'>00:41.5 - 00:42.5 · 帧 1245-1276 · 峰值帧 1275</div>
+                </div>
+              </div>
+              <img src='previews/seg_021_sam2_object_drop.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 该时段掩膜。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_object_drop</code></span>
+                  <span><b>阶段</b><code>sam2_object_drop</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>当前面积</b>36802</span><span class='evitem'><b>前后参考面积</b>101907</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;area&quot;: 36802,
+  &quot;reference_median&quot;: 101907
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-002' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 漂移 <code>sam2_drift</code></div>
+                  <div class='tc'>00:00.0 - 00:01.2 · 帧 0-35 · 峰值帧 5</div>
+                </div>
+              </div>
+              <img src='previews/seg_002_sam2_drift.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</div>
+                <div class='hint'><b>复核建议：</b>查看该对象前后帧位置是否突变。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_drift</code></span>
+                  <span><b>阶段</b><code>sam2_drift</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>中心跳变距离</b>554.600</span><span class='evitem'><b>阈值</b>476.500</span><span class='evitem'><b>上一帧</b>0</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;center_jump_px&quot;: 554.6,
+  &quot;threshold_px&quot;: 476.5,
+  &quot;prev_frame&quot;: 0
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-003' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 背景泄漏 <code>sam2_background_leak</code></div>
+                  <div class='tc'>00:01.2 - 00:04.2 · 帧 35-125 · 峰值帧 65</div>
+                </div>
+              </div>
+              <img src='previews/seg_003_sam2_background_leak.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象面积异常增大，可能错误吃进背景。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 是否扩散到背景。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_background_leak</code></span>
+                  <span><b>阶段</b><code>sam2_background_leak</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_02</span><span class='evitem'><b>当前面积</b>60282</span><span class='evitem'><b>前后参考面积</b>32951</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_02&quot;,
+  &quot;area&quot;: 60282,
+  &quot;reference_median&quot;: 32951
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-006' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 漂移 <code>sam2_drift</code></div>
+                  <div class='tc'>00:02.3 - 00:05.2 · 帧 70-155 · 峰值帧 100</div>
+                </div>
+              </div>
+              <img src='previews/seg_006_sam2_drift.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</div>
+                <div class='hint'><b>复核建议：</b>查看该对象前后帧位置是否突变。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_drift</code></span>
+                  <span><b>阶段</b><code>sam2_drift</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>中心跳变距离</b>631.500</span><span class='evitem'><b>阈值</b>476.500</span><span class='evitem'><b>上一帧</b>95</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;center_jump_px&quot;: 631.5,
+  &quot;threshold_px&quot;: 476.5,
+  &quot;prev_frame&quot;: 95
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-008' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 背景泄漏 <code>sam2_background_leak</code></div>
+                  <div class='tc'>00:15.3 - 00:17.3 · 帧 460-520 · 峰值帧 490</div>
+                </div>
+              </div>
+              <img src='previews/seg_008_sam2_background_leak.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象面积异常增大，可能错误吃进背景。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 是否扩散到背景。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_background_leak</code></span>
+                  <span><b>阶段</b><code>sam2_background_leak</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_02</span><span class='evitem'><b>当前面积</b>64225</span><span class='evitem'><b>前后参考面积</b>35268</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_02&quot;,
+  &quot;area&quot;: 64225,
+  &quot;reference_median&quot;: 35268
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-012' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 漂移 <code>sam2_drift</code></div>
+                  <div class='tc'>00:17.2 - 00:19.3 · 帧 515-580 · 峰值帧 545</div>
+                </div>
+              </div>
+              <img src='previews/seg_012_sam2_drift.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</div>
+                <div class='hint'><b>复核建议：</b>查看该对象前后帧位置是否突变。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>2</span>
+                  <span><b>问题来源</b><code>sam2_drift</code></span>
+                  <span><b>阶段</b><code>sam2_drift</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>中心跳变距离</b>480.400</span><span class='evitem'><b>阈值</b>476.500</span><span class='evitem'><b>上一帧</b>530</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;center_jump_px&quot;: 480.4,
+  &quot;threshold_px&quot;: 476.5,
+  &quot;prev_frame&quot;: 530
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-013' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 背景泄漏 <code>sam2_background_leak</code></div>
+                  <div class='tc'>00:17.3 - 00:19.3 · 帧 520-580 · 峰值帧 550</div>
+                </div>
+              </div>
+              <img src='previews/seg_013_sam2_background_leak.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象面积异常增大，可能错误吃进背景。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 是否扩散到背景。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_background_leak</code></span>
+                  <span><b>阶段</b><code>sam2_background_leak</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>当前面积</b>143125</span><span class='evitem'><b>前后参考面积</b>64737</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;area&quot;: 143125,
+  &quot;reference_median&quot;: 64737
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-015' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 背景泄漏 <code>sam2_background_leak</code></div>
+                  <div class='tc'>00:29.3 - 00:31.3 · 帧 880-940 · 峰值帧 910</div>
+                </div>
+              </div>
+              <img src='previews/seg_015_sam2_background_leak.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象面积异常增大，可能错误吃进背景。</div>
+                <div class='hint'><b>复核建议：</b>查看 masks/sam2/&lt;对象&gt; 是否扩散到背景。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_background_leak</code></span>
+                  <span><b>阶段</b><code>sam2_background_leak</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>host_hand_product_01</span><span class='evitem'><b>当前面积</b>7052</span><span class='evitem'><b>前后参考面积</b>2982</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;host_hand_product_01&quot;,
+  &quot;area&quot;: 7052,
+  &quot;reference_median&quot;: 2982
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-017' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 漂移 <code>sam2_drift</code></div>
+                  <div class='tc'>00:31.2 - 00:33.2 · 帧 935-995 · 峰值帧 965</div>
+                </div>
+              </div>
+              <img src='previews/seg_017_sam2_drift.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</div>
+                <div class='hint'><b>复核建议：</b>查看该对象前后帧位置是否突变。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_drift</code></span>
+                  <span><b>阶段</b><code>sam2_drift</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>中心跳变距离</b>911.500</span><span class='evitem'><b>阈值</b>476.500</span><span class='evitem'><b>上一帧</b>960</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;center_jump_px&quot;: 911.5,
+  &quot;threshold_px&quot;: 476.5,
+  &quot;prev_frame&quot;: 960
+}</pre></details>
+              </div>
+            </article>
+            
+
+            <article class='card' id='seg-018' data-sev='medium'>
+              <div class='card-head'>
+                <span class='badge' style='background:#e67e22'>中等</span>
+                <div>
+                  <div class='cname'>SAM2 漂移 <code>sam2_drift</code></div>
+                  <div class='tc'>00:35.3 - 00:37.3 · 帧 1060-1120 · 峰值帧 1090</div>
+                </div>
+              </div>
+              <img src='previews/seg_018_sam2_drift.jpg' loading='lazy'/>
+              <div class='cbody'>
+                <div class='desc'>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</div>
+                <div class='hint'><b>复核建议：</b>查看该对象前后帧位置是否突变。</div>
+                <div class='facts'>
+                  <span><b>命中帧数</b>1</span>
+                  <span><b>问题来源</b><code>sam2_drift</code></span>
+                  <span><b>阶段</b><code>sam2_drift</code></span>
+                </div>
+                <div class='evidence'><span class='evitem'><b>对象</b>table_region_sam2</span><span class='evitem'><b>中心跳变距离</b>542.700</span><span class='evitem'><b>阈值</b>476.500</span><span class='evitem'><b>上一帧</b>1085</span></div>
+                <details><summary>证据 evidence</summary><pre class='ev'>{
+  &quot;object&quot;: &quot;table_region_sam2&quot;,
+  &quot;center_jump_px&quot;: 542.7,
+  &quot;threshold_px&quot;: 476.5,
+  &quot;prev_frame&quot;: 1085
+}</pre></details>
+              </div>
+            </article>
+            </div>
+</section>
+<section class='support'>
+  <div class='panel'>
+    <h2>告警类型概览</h2>
+    <table class='wide'><tr><th>告警</th><th>类型代码</th><th>片段数</th><th>说明</th></tr><tr><td>SAM2 对象掉面积</td><td><code>sam2_object_drop</code></td><td>10</td><td>同一 SAM2 对象面积相对前后 1 秒中位数骤降，跟踪可能丢失。</td></tr><tr><td>SAM2 漂移</td><td><code>sam2_drift</code></td><td>5</td><td>SAM2 对象 bbox 中心突然跳远，超过画面尺寸阈值，跟踪可能漂移。</td></tr><tr><td>SAM2 背景泄漏</td><td><code>sam2_background_leak</code></td><td>4</td><td>SAM2 对象面积异常增大，可能错误吃进背景。</td></tr><tr><td>主播手持商品掉面积</td><td><code>host_product_drop</code></td><td>3</td><td>host_hand_products mask 面积相对前后骤降，商品可能丢失或被遮挡。</td></tr></table>
+  </div>
+  <div class='panel'>
+    <h2>提示 / 警告</h2>
+    <ul><li>无</li></ul>
+    
+  </div>
+  <div class='panel'>
+    <h2>输入状态</h2>
+    <table><tr><th>产物</th><th>状态</th><th>帧数</th></tr><tr><td>源视频 source.mp4</td><td class='st-ok'>正常</td><td></td></tr><tr><td>源帧目录 frames/source</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>最终合成 alpha combined_alpha</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>人像 alpha (MatAnyone)</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>最终保留区 final_keep</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>桌面商品 table_products</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>主播手持商品 host_hand_products</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>助播人像 assistant_person</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>助播手持商品 assistant_hand_products</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>字幕 mask subtitles</td><td class='st-ok'>正常</td><td>1277</td></tr><tr><td>SAM2 掩膜 masks/sam2</td><td class='st-ok'>正常</td><td></td></tr><tr><td>SAM2 prompts</td><td class='st-ok'>正常</td><td></td></tr><tr><td>auto_candidates</td><td class='st-ok'>正常</td><td></td></tr><tr><td>成片清单 outputs/manifest.json</td><td class='st-ok'>正常</td><td></td></tr><tr><td>合成成片</td><td class='st-ok'>正常</td><td></td></tr></table>
+  </div>
+  <div class='panel'>
+    
+  <h2>性能报告</h2>
+  <table class='wide'>
+    <tr><th>指标</th><th>值</th></tr>
+    <tr><td>视频时长</td><td>42.57 s（1277 帧 @ 30.0 fps）</td></tr>
+    <tr><td>实际处理帧</td><td>256 帧（采样步长 5）</td></tr>
+    <tr><td>读取数据量</td><td>109.0 MB</td></tr>
+    <tr><td>总耗时</td><td>18.43 s</td></tr>
+    <tr><td>数据吞吐</td><td><b>5.91 MB/s</b></td></tr>
+    <tr><td>处理速度</td><td>13.89 帧/s</td></tr>
+    <tr><td>实时倍率</td><td>2.31x（视频时长 / 处理耗时）</td></tr>
+    <tr><td>YOLO 策略</td><td>smart，实际 YOLO 帧 50/256（0.195）</td></tr>
+  </table>
+  <h3>阶段耗时</h3><table class='wide'><tr><th>阶段</th><th>耗时</th></tr><tr><td>准备 / 扫描</td><td>0.719 s</td></tr><tr><td>mask 读取与统计</td><td>8.877 s</td></tr><tr><td>YOLO 读帧与推理</td><td>5.99 s</td></tr><tr><td>SAM2 时序分析</td><td>1.754 s</td></tr><tr><td>预览图生成</td><td>0.852 s</td></tr><tr><td>报告写出</td><td>0.0 s</td></tr></table>
+  </div>
+</section>
+<script>
+function flt(btn, sev) {
+  document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#grid .card').forEach(c => {
+    c.style.display = (sev === 'all' || c.dataset.sev === sev) ? '' : 'none';
+  });
+}
+</script>
+</body></html>
